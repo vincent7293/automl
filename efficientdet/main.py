@@ -104,7 +104,8 @@ flags.DEFINE_string('model_name', 'efficientdet-d1',
                     'Model name: retinanet or efficientdet')
 flags.DEFINE_bool('eval_after_training', False, 'Run one eval after the '
                   'training finishes.')
-
+flags.DEFINE_integer('num_epochs_per_eval', 1, 'For train_and_eval mode, '
+                  'number of epochs finish before every eval.')
 # For Eval mode
 flags.DEFINE_integer('min_eval_interval', 180,
                      'Minimum seconds between evaluations.')
@@ -356,30 +357,30 @@ def main(argv):
                                           is_training=True,
                                           use_fake_data=FLAGS.use_fake_data),
           steps=int(FLAGS.num_examples_per_epoch / FLAGS.train_batch_size))
+      if FLAGS.num_epochs_per_eval % cycle == 0:
+        logging.info('Starting evaluation cycle, epoch: %d.', cycle)
+        # Run evaluation after FLAGS.num_epochs_per_eval (default: 1) epoch.
+        eval_params = dict(
+            params,
+            use_tpu=False,
+            input_rand_hflip=False,
+            is_training_bn=False,
+        )
 
-      logging.info('Starting evaluation cycle, epoch: %d.', cycle)
-      # Run evaluation after every epoch.
-      eval_params = dict(
-          params,
-          use_tpu=False,
-          input_rand_hflip=False,
-          is_training_bn=False,
-      )
-
-      eval_estimator = tf.estimator.tpu.TPUEstimator(
-          model_fn=model_fn_instance,
-          use_tpu=False,
-          train_batch_size=FLAGS.train_batch_size,
-          eval_batch_size=FLAGS.eval_batch_size,
-          config=run_config,
-          params=eval_params)
-      eval_results = eval_estimator.evaluate(
-          input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
-                                          is_training=False),
-          steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      logging.info('Evaluation results: %s', eval_results)
-      ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
-      utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
+        eval_estimator = tf.estimator.tpu.TPUEstimator(
+            model_fn=model_fn_instance,
+            use_tpu=False,
+            train_batch_size=FLAGS.train_batch_size,
+            eval_batch_size=FLAGS.eval_batch_size,
+            config=run_config,
+            params=eval_params)
+        eval_results = eval_estimator.evaluate(
+            input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
+                                            is_training=False),
+            steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
+        logging.info('Evaluation results: %s', eval_results)
+        ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
+        utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 
   else:
     logging.info('Mode not found.')
